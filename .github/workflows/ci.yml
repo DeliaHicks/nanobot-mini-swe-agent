@@ -1,0 +1,83 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - docs/**
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - docs/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        python-version:
+          - "3.13"
+          - "3.14"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Olm development library and local build toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libolm-dev build-essential cmake pkg-config libffi-dev
+
+      - name: Install all optional and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,api,azure,bedrock,dingtalk,documents,feishu,mochat,napcat,qq,slack,telegram,wecom,weixin,msteams,matrix,discord,whatsapp,langsmith,pdf,olostep]"
+
+      - name: Run Ruff Pyflakes checks on the main package
+        run: ruff check --select F nanobot/
+
+      - name: Run test suite with coverage
+        run: python -m pytest --cov=nanobot --cov-report=term-missing:skip-covered
+
+  webui:
+    name: WebUI checks, tests, and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webui
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+
+      - name: Install WebUI dependencies
+        run: bun install
+
+      - name: Run WebUI static checks
+        run: bun run lint
+
+      - name: Run WebUI tests
+        run: bun run test
+
+      - name: Build WebUI
+        run: bun run build
